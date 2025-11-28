@@ -23,80 +23,61 @@ The objective is to develop an intuitive and interactive interface that enables 
 ## Name: Rishivarman R
 ## Reg No.: 212224100050
 ```
+
 import os
-import io
-from IPython.display import Image, display, HTML
-from PIL import Image
-import base64 
-
 from dotenv import load_dotenv, find_dotenv
-_ = load_dotenv(find_dotenv()) # read local .env file
-hf_api_key = os.environ['HF_API_KEY']
-```
-```
-#### Helper function
-import requests, json
+import gradio as gr
+from text_generation import Client
 
-#Here we are going to call multiple endpoints!
-def get_completion(inputs, parameters=None, ENDPOINT_URL=""):
-    headers = {
-      "Authorization": f"Bearer {hf_api_key}",
-      "Content-Type": "application/json"
-    }   
-    data = { "inputs": inputs }
-    if parameters is not None:
-        data.update({"parameters": parameters})
-    response = requests.request("POST",
-                                ENDPOINT_URL,
-                                headers=headers,
-                                data=json.dumps(data))
-    return json.loads(response.content.decode("utf-8"))
-```
-```
-#text-to-image
-TTI_ENDPOINT = os.environ['HF_API_TTI_BASE']
-#image-to-text
-ITT_ENDPOINT = os.environ['HF_API_ITT_BASE']
-```
-```
-#Bringing the functions from lessons 3 and 4!
-def image_to_base64_str(pil_image):
-    byte_arr = io.BytesIO()
-    pil_image.save(byte_arr, format='PNG')
-    byte_arr = byte_arr.getvalue()
-    return str(base64.b64encode(byte_arr).decode('utf-8'))
+load_dotenv(find_dotenv())
 
-def base64_to_pil(img_base64):
-    base64_decoded = base64.b64decode(img_base64)
-    byte_stream = io.BytesIO(base64_decoded)
-    pil_image = Image.open(byte_stream)
-    return pil_image
+HF_API_KEY = os.environ["HF_API_KEY"]
+FALCON_ENDPOINT = os.environ["HF_API_FALCOM_BASE"]
 
-def captioner(image):
-    base64_image = image_to_base64_str(image)
-    result = get_completion(base64_image, None, ITT_ENDPOINT)
-    return result[0]['generated_text']
 
-def generate(prompt):
-    output = get_completion(prompt, None, TTI_ENDPOINT)
-    result_image = base64_to_pil(output)
-    return result_image
-```
-```
-import gradio as gr 
+client = Client(
+    FALCON_ENDPOINT,
+    headers={"Authorization": f"Basic {HF_API_KEY}"},
+    timeout=120
+)
+
+
+def format_chat_prompt(message, chat_history):
+    prompt = ""
+    for user_msg, bot_msg in chat_history:
+        prompt += f"User: {user_msg}\nAssistant: {bot_msg}\n"
+    prompt += f"User: {message}\nAssistant:"
+    return prompt
+
+def respond(message, chat_history):
+    prompt = format_chat_prompt(message, chat_history)
+
+    # Generate using Falcon
+    bot_message = client.generate(
+        prompt,
+        max_new_tokens=512,
+        stop_sequences=["User:", "<|endoftext|>"]
+    ).generated_text
+
+    chat_history.append((message, bot_message))
+    return "", chat_history
+
 with gr.Blocks() as demo:
-    gr.Markdown("# Describe-and-Generate game 🖍️")
-    image_upload = gr.Image(label="Your first image",type="pil")
-    btn_caption = gr.Button("Generate caption")
-    caption = gr.Textbox(label="Generated caption")
-    
-    btn_caption.click(fn=captioner, inputs=[image_upload], outputs=[caption])
+    gr.Markdown("## 🦅 Falcon LLM — Chatbot (Jupyter Notebook Version)")
 
-gr.close_all()
-demo.launch(share=True, server_port=int(os.environ['PORT1']))
+    chatbot = gr.Chatbot(height=350)
+    msg = gr.Textbox(label="Type your message...")
+    submit = gr.Button("Send")
+    clear = gr.ClearButton([msg, chatbot])
+
+    submit.click(respond, [msg, chatbot], [msg, chatbot])
+    msg.submit(respond, [msg, chatbot], [msg, chatbot])
+
+demo.launch(share=False)   # share=True only if you want a public link
 ```
 ### OUTPUT:
-<img width="1030" height="735" alt="Screenshot 2025-11-20 213621" src="https://github.com/user-attachments/assets/d8e1fcae-231a-4b92-9954-aeae4ee7a481" />
+
+<img width="1216" height="849" alt="Screenshot 2025-11-28 101428" src="https://github.com/user-attachments/assets/faeef50b-50ca-4ddc-9d49-12bf15cac38e" />
 
 ### RESULT:
 The "Chat with LLM" application was successfully designed and deployed. The Gradio Blocks framework provided a user-friendly interface, ensuring seamless communication with the large language model.
